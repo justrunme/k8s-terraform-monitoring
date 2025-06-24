@@ -1,19 +1,23 @@
+# servicemonitor.tf
+
+# Ждем, пока Helm развернет все CRD
 resource "null_resource" "wait_for_servicemonitor_crd" {
   depends_on = [helm_release.kube_prometheus_stack]
 
   provisioner "local-exec" {
     command = <<EOT
-for i in {1..30}; do
-  kubectl get crd servicemonitors.monitoring.coreos.com && exit 0
-  echo "Waiting for ServiceMonitor CRD..."
-  sleep 5
-done
-echo "CRD ServiceMonitor not found after timeout!" >&2
-exit 1
-EOT
+      for i in {1..30}; do
+        kubectl get crd servicemonitors.monitoring.coreos.com && exit 0
+        echo "Waiting for ServiceMonitor CRD..."
+        sleep 5
+      done
+      echo "CRD ServiceMonitor not found after timeout!" >&2
+      exit 1
+    EOT
   }
 }
 
+# ServiceMonitor — создаем только после появления CRD!
 resource "kubernetes_manifest" "test_app_servicemonitor" {
   manifest = {
     apiVersion = "monitoring.coreos.com/v1"
@@ -33,7 +37,7 @@ resource "kubernetes_manifest" "test_app_servicemonitor" {
       }
       endpoints = [
         {
-          port     = "http"
+          port     = "http"      # имя порта — смотри service!
           path     = "/"
           interval = "15s"
         }
