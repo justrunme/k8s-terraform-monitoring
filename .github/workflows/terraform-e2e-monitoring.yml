@@ -100,8 +100,7 @@ jobs:
       # --------------------- Cleanup -------------------------
       - name: Terraform Destroy (if: always())
         if: always()
-        run: |
-          terraform destroy -auto-approve || true
+        run: terraform destroy -auto-approve || true
 
       - name: Delete Kind Cluster (if: always())
         if: always()
