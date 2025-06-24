@@ -1,0 +1,20 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "iteration": 1625581575879,
+  "links": [],
+  "panels": [],
+  "schemaVersion": 22,
+  "style": "dark",
+  "tags": [],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Custom Dashboard",
+  "uid": "mydashboard",
+  "version": 1
+}
