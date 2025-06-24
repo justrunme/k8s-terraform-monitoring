@@ -44,6 +44,7 @@ jobs:
       - name: Terraform Apply (Helm ONLY)
         run: terraform apply -auto-approve -target=helm_release.kube_prometheus_stack
 
+      # --------- Wait for ServiceMonitor CRD --------
       - name: Wait for ServiceMonitor CRD
         run: |
           for i in {1..30}; do
@@ -97,11 +98,11 @@ jobs:
           curl -sf http://localhost:9090/targets | grep "test-app" || (echo "No test-app in prometheus targets" && exit 1)
 
       # --------------------- Cleanup -------------------------
-      - name: Terraform Destroy
+      - name: Terraform Destroy (if: always())
         if: always()
         run: |
           terraform destroy -auto-approve || true
 
-      - name: Delete Kind Cluster
+      - name: Delete Kind Cluster (if: always())
         if: always()
         run: kind delete cluster || true
