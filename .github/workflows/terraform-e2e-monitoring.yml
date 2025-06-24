@@ -1,0 +1,79 @@
+name: Terraform Monitoring + E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e-monitoring:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Kind & Kubectl
+        run: |
+          curl -Lo kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
+          chmod +x kind && sudo mv kind /usr/local/bin/
+          curl -Lo kubectl https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+
+      - name: Create Kind Cluster
+        run: kind create cluster --wait 60s
+
+      - name: Prepare PV in Kind
+        run: |
+          docker exec kind-control-plane mkdir -p /tmp/demo-data
+          docker exec kind-control-plane chmod 777 /tmp/demo-data
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        env:
+          TF_VAR_demo_password: ${{ secrets.DEMO_PASSWORD }}
+        run: terraform plan -lock=false
+
+      - name: Terraform Apply
+        env:
+          TF_VAR_demo_password: ${{ secrets.DEMO_PASSWORD }}
+        run: terraform apply -auto-approve
+
+      - name: Wait for Monitoring Deployments
+        run: |
+          kubectl rollout status deployment/kube-prometheus-stack-prometheus -n monitoring --timeout=180s
+          kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=180s
+
+      - name: Smoke Test Grafana & Prometheus
+        run: |
+          kubectl port-forward svc/kube-prometheus-stack-grafana 3000:80 -n monitoring &
+          sleep 10
+          curl -sf http://localhost:3000/api/health  && echo "Grafana OK"
+          kubectl port-forward svc/kube-prometheus-stack-prometheus 9090:80 -n monitoring &
+          sleep 10
+          curl -sf http://localhost:9090/-/ready && echo "Prometheus OK"
+
+      - name: Test Demo App
+        run: |
+          kubectl port-forward svc/nginx-service 30080:80 -n demo &
+          sleep 5
+          curl -sf http://localhost:30080 | grep "K8s Demo via Terraform"
+
+      - name: Terraform Destroy
+        if: always()
+        env:
+          TF_VAR_demo_password: ${{ secrets.DEMO_PASSWORD }}
+        run: terraform destroy -auto-approve
+
+      - name: Delete Kind Cluster
+        if: always()
+        run: kind delete cluster
