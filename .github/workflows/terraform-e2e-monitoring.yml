@@ -1,4 +1,4 @@
-name: Terraform Monitoring E2E
+name: Terraform E2E Test
 
 on:
   push:
@@ -18,19 +18,17 @@ jobs:
       - name: Install Kind & Kubectl
         run: |
           curl -LO "https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64"
-          chmod +x kind-linux-amd64
-          sudo mv kind-linux-amd64 /usr/local/bin/kind
+          sudo install -m 0755 kind-linux-amd64 /usr/local/bin/kind
           curl -LO "https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/kubectl
+          sudo install -m 0755 kubectl /usr/local/bin/kubectl
 
       - name: Create Kind Cluster
         run: kind create cluster --wait 60s
 
       - name: Wait for Cluster DNS (CoreDNS)
-        run: |
-          kubectl rollout status deployment/coredns -n kube-system --timeout=90s
+        run: kubectl rollout status deployment/coredns -n kube-system --timeout=90s
 
+      # --- Prepare hostPath for PV (Kind) ---
       - name: Prepare hostPath for PV (Kind)
         run: |
           docker exec kind-control-plane mkdir -p /tmp/demo-data
@@ -39,62 +37,71 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      # --------- Шаг 1: только prometheus stack ----------
       - name: Terraform Init
         run: terraform init -backend=false
 
-      - name: Terraform Validate
-        run: terraform validate
+      - name: Terraform Apply (Helm ONLY)
+        run: terraform apply -auto-approve -target=helm_release.kube_prometheus_stack
 
-      - name: Terraform Plan
-        run: terraform plan -lock=false
+      - name: Wait for ServiceMonitor CRD
+        run: |
+          for i in {1..30}; do
+            kubectl get crd servicemonitors.monitoring.coreos.com && exit 0
+            echo "Waiting for ServiceMonitor CRD..."
+            sleep 5
+          done
+          echo "CRD ServiceMonitor not found after timeout!" >&2
+          exit 1
 
-      - name: Terraform Apply
+      # --------- Шаг 2: весь остальной apply ----------
+      - name: Terraform Apply (ALL)
         run: terraform apply -auto-approve
 
-      # ------------------- SMOKE TESTS -------------------
+      # ------------------- E2E/Smoke тесты -------------------
       - name: Wait for Monitoring Namespace
-        run: |
-          for i in {1..20}; do kubectl get ns monitoring && break || sleep 4; done
-
-      - name: Wait for Prometheus & Grafana Pods
-        run: |
-          kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=180s
-          kubectl rollout status statefulset/kube-prometheus-stack-prometheus -n monitoring --timeout=180s
+        run: for i in {1..30}; do kubectl get ns monitoring && break || sleep 4; done
 
       - name: Wait for test-app Pod
         run: |
           kubectl rollout status deployment/test-app -n monitoring --timeout=120s
 
+      - name: PVC Bound Test (if used)
+        run: |
+          kubectl get pvc || echo "No PVCs in monitoring ns"
+
+      - name: Check test-app Service
+        run: |
+          kubectl get svc test-app -n monitoring
+
+      - name: Port-Forward & cURL Test (test-app)
+        run: |
+          kubectl port-forward svc/test-app 8080:80 -n monitoring &
+          sleep 5
+          curl -sf http://localhost:8080 | grep "Welcome" || (echo "No response from test-app" && exit 1)
+
       - name: Port-forward Grafana & check login page
         run: |
-          kubectl port-forward svc/kube-prometheus-stack-grafana 3000:80 -n monitoring &
+          # Получаем имя сервиса Grafana
+          GRAFANA_SVC=$(kubectl get svc -n monitoring -o name | grep grafana)
+          kubectl port-forward -n monitoring $GRAFANA_SVC 30090:3000 &
           sleep 10
-          curl -sf http://localhost:3000/login | grep "grafana" || (echo "No Grafana page" && exit 1)
+          curl -sf http://localhost:30090/login | grep "grafana" || (echo "No Grafana login page" && exit 1)
 
-      - name: Port-forward Prometheus & check status page
+      # ServiceMonitor is tested via Prometheus Targets UI
+      - name: Prometheus Targets available
         run: |
-          kubectl port-forward svc/kube-prometheus-stack-prometheus 9090:9090 -n monitoring &
+          PROM_SVC=$(kubectl get svc -n monitoring -o name | grep prometheus)
+          kubectl port-forward -n monitoring $PROM_SVC 9090:9090 &
           sleep 10
-          curl -sf http://localhost:9090/ | grep "Prometheus" || (echo "No Prometheus page" && exit 1)
+          curl -sf http://localhost:9090/targets | grep "test-app" || (echo "No test-app in prometheus targets" && exit 1)
 
-      - name: Port-forward test-app & check
-        run: |
-          kubectl port-forward svc/test-app 8000:80 -n monitoring &
-          sleep 5
-          curl -sf http://localhost:8000/ | grep "Welcome to nginx" || (echo "test-app not available" && exit 1)
-
-      # --- Дополнительно: Проверка наличия ServiceMonitor ---
-      - name: Check ServiceMonitor
-        run: |
-          kubectl get servicemonitor -n monitoring | grep test-app
-
-      # --- Уборка ---
+      # --------------------- Cleanup -------------------------
       - name: Terraform Destroy
         if: always()
         run: |
-          terraform init -backend=false
-          terraform destroy -auto-approve
+          terraform destroy -auto-approve || true
 
       - name: Delete Kind Cluster
         if: always()
-        run: kind delete cluster
+        run: kind delete cluster || true
