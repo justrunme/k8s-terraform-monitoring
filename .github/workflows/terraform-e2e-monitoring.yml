@@ -79,7 +79,7 @@ jobs:
       - name: Port-forward Grafana & check login page
         run: |
           GRAFANA_SVC=$(kubectl get svc -n monitoring -o name | grep grafana)
-          kubectl port-forward -n monitoring $GRAFANA_SVC 30090:3000 &
+          kubectl port-forward -n monitoring $GRAFANA_SVC 30090:http-web &
           sleep 10
           curl -sf http://localhost:30090/login | grep "grafana" || (echo "No Grafana login page" && exit 1)
 
