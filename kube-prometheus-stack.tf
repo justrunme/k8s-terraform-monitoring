@@ -15,7 +15,9 @@ grafana:
     nodePort: 30090
 prometheus:
   prometheusSpec:
-    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector:
+      matchLabels:
+        release: kube-prometheus-stack
 EOF
   ]
   wait    = true
