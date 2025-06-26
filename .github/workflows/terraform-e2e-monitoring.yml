@@ -96,7 +96,7 @@ jobs:
       - name: Get Prometheus Operator Pod Logs
         run: |
           echo "--- Prometheus Operator Pod Logs ---"
-          PROM_OPERATOR_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus-operator -o jsonpath='{.items[0].metadata.name}')
+          PROM_OPERATOR_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=kube-prometheus-stack-prometheus-operator -o jsonpath='{.items[0].metadata.name}')
           kubectl logs $PROM_OPERATOR_POD -n monitoring
 
       - name: Prometheus Targets available
