@@ -28,7 +28,6 @@ jobs:
       - name: Wait for Cluster DNS (CoreDNS)
         run: kubectl rollout status deployment/coredns -n kube-system --timeout=90s
 
-      # --- Prepare hostPath for PV (Kind) ---
       - name: Prepare hostPath for PV (Kind)
         run: |
           docker exec kind-control-plane mkdir -p /tmp/demo-data
@@ -37,14 +36,12 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      # --------- Шаг 1: только prometheus stack ----------
       - name: Terraform Init
         run: terraform init -backend=false
 
       - name: Terraform Apply (Helm ONLY)
         run: terraform apply -auto-approve -target=helm_release.kube_prometheus_stack
 
-      # --------- Wait for ServiceMonitor CRD --------
       - name: Wait for ServiceMonitor CRD
         run: |
           for i in {1..30}; do
@@ -55,11 +52,9 @@ jobs:
           echo "CRD ServiceMonitor not found after timeout!" >&2
           exit 1
 
-      # --------- Шаг 2: весь остальной apply ----------
       - name: Terraform Apply (ALL)
         run: terraform apply -auto-approve
 
-      # ------------------- E2E/Smoke тесты -------------------
       - name: Wait for Monitoring Namespace
         run: for i in {1..30}; do kubectl get ns monitoring && break || sleep 4; done
 
@@ -83,7 +78,6 @@ jobs:
 
       - name: Port-forward Grafana & check login page
         run: |
-          # Получаем имя сервиса Grafana
           GRAFANA_SVC=$(kubectl get svc -n monitoring -o name | grep grafana)
           kubectl port-forward -n monitoring $GRAFANA_SVC 30090:3000 &
           sleep 10
@@ -100,16 +94,15 @@ jobs:
           PROM_OPERATOR_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus-operator -o jsonpath='{.items[0].metadata.name}')
           kubectl logs $PROM_OPERATOR_POD -n monitoring
 
-      # ServiceMonitor is tested via Prometheus Targets UI
       - name: Prometheus Targets available
         run: |
           echo "test"
 
       # --------------------- Cleanup -------------------------
-      - name: Terraform Destroy (if: always())
-        if: always()
+      - name: Terraform Destroy
+        if: ${{ always() }}
         run: terraform destroy -auto-approve || true
 
-      - name: Delete Kind Cluster (if: always())
-        if: always()
+      - name: Delete Kind Cluster
+        if: ${{ always() }}
         run: kind delete cluster || true
