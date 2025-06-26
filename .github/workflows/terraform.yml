@@ -1,0 +1,92 @@
+name: 'Terraform CI with Kind'
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test-infrastructure:
+    name: 'Test with Kind'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Go' # Kind CLI requires Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: 'Setup Kind'
+        uses: helm/kind-action@v1.10.0
+
+      - name: 'Create Kind Cluster'
+        run: |
+          kind create cluster --name terraform-test
+          kubectl cluster-info --context kind-terraform-test
+
+      - name: 'Setup Terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.2.0'
+
+      - name: 'Terraform Init'
+        run: terraform init
+
+      - name: 'Terraform Apply'
+        run: terraform apply -auto-approve
+
+      - name: 'Wait and Verify Pods'
+        run: |
+          echo "--- Waiting for all pods in 'monitoring' namespace to be ready ---"
+          kubectl wait --for=condition=Ready pod --all -n monitoring --timeout=5m
+          
+          echo "--- Verifying pods ---"
+          kubectl get pods -n monitoring
+          
+          # Проверяем, что ключевые поды существуют
+          kubectl get pod -n monitoring -l app.kubernetes.io/name=grafana -o name | grep .
+          kubectl get pod -n monitoring -l app=prometheus -o name | grep .
+          kubectl get pod -n monitoring -l app=test-app -o name | grep .
+
+      - name: 'Verify Prometheus Target'
+        run: |
+          echo "--- Verifying that Prometheus has discovered the test-app target ---"
+          PROMETHEUS_POD=$(kubectl get pods -n monitoring -l app=prometheus -o jsonpath='{.items[0].metadata.name}')
+          
+          # Пробрасываем порт Prometheus наружу в фоновом режиме
+          kubectl port-forward -n monitoring $PROMETHEUS_POD 9090:9090 &
+          PORT_FORWARD_PID=$!
+          
+          # Даем время на запуск port-forward
+          sleep 5
+
+          # Проверяем API Prometheus в цикле, пока не найдем нужный таргет
+          for i in {1..20}; do
+            echo "Attempt $i: Querying Prometheus API for targets..."
+            API_RESPONSE=$(curl -s http://localhost:9090/api/v1/targets)
+            
+            # Ищем таргет test-app и проверяем, что он 'up'
+            TARGET_HEALTH=$(echo $API_RESPONSE | jq -r '.data.activeTargets[] | select(.discoveredLabels.app == "test-app") | .health')
+            
+            if [ "$TARGET_HEALTH" == "up" ]; then
+              echo "SUCCESS: Prometheus target '''test-app''' is up!"
+              # Убиваем фоновый процесс и выходим с успехом
+              kill $PORT_FORWARD_PID
+              exit 0
+            fi
+            sleep 10
+          done
+          
+          echo "FAILURE: Prometheus target '''test-app''' was not found or is not healthy after 200s."
+          echo "--- Prometheus API Response ---"
+          echo $API_RESPONSE | jq .
+          kill $PORT_FORWARD_PID
+          exit 1
+
+      - name: 'Delete Kind Cluster'
+        if: always() # Этот шаг выполняется всегда
+        run: kind delete cluster --name terraform-test
