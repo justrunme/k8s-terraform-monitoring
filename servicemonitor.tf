@@ -18,7 +18,7 @@ resource "kubernetes_manifest" "test_app_servicemonitor" {
       }
       endpoints = [
         {
-          port     = "http"     # Имя порта в Service!
+          port     = "metrics"     # Имя порта в Service!
           path     = "/metrics"
           interval = "15s"
         }

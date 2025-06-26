@@ -45,8 +45,8 @@ resource "kubernetes_service" "test_app" {
       app = "test-app"
     }
     port {
-      name        = "http"  # ВАЖНО! Для ServiceMonitor
-      port        = 80
+      name        = "metrics"  # ВАЖНО! Для ServiceMonitor
+      port        = 9100
       target_port = 9100
       protocol    = "TCP"
     }
