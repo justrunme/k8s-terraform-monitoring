@@ -18,5 +18,7 @@ prometheus:
     serviceMonitorSelectorNilUsesHelmValues: false
 EOF
   ]
+  wait    = true
+  timeout = 600
   # Опционально: wait = true, timeout = 600
 }
