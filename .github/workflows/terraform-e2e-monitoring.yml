@@ -108,7 +108,8 @@ jobs:
           PORT_FORWARD_PID=$!
           sleep 10
 
-          if ! curl -sf http://localhost:9090/targets | grep "test-app"; then
+          if ! curl -sf http://localhost:9090/targets | grep "test-app"
+          then
             echo "FAILURE: No test-app in prometheus targets."
             echo "--- Prometheus Pod Logs ---"
             kubectl logs $PROM_POD -n monitoring
