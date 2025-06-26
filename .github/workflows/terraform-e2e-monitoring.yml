@@ -72,9 +72,9 @@ jobs:
 
       - name: Port-Forward & cURL Test (test-app)
         run: |
-          kubectl port-forward svc/test-app 8080:80 -n monitoring &
+          kubectl port-forward svc/test-app 8080:9100 -n monitoring &
           sleep 5
-          curl -sf http://localhost:8080 | grep "Welcome" || (echo "No response from test-app" && exit 1)
+          curl -sf http://localhost:8080/metrics | grep "node_exporter_build_info" || (echo "No node-exporter metrics" && exit 1)
 
       - name: Port-forward Grafana & check login page
         run: |
