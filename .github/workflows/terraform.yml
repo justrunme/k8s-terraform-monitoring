@@ -36,7 +36,10 @@ jobs:
       - name: 'Terraform Init'
         run: terraform init
 
-      - name: 'Terraform Apply'
+      - name: 'Terraform Apply (Step 1: Deploy Prometheus Operator)'
+        run: terraform apply -auto-approve -target=helm_release.kube_prometheus_stack
+
+      - name: 'Terraform Apply (Step 2: Deploy Remaining Resources)'
         run: terraform apply -auto-approve
 
       - name: 'Wait and Verify Pods'
