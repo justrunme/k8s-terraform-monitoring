@@ -106,3 +106,4 @@ jobs:
       - name: Delete Kind Cluster
         if: ${{ always() }}
         run: kind delete cluster || true
+
