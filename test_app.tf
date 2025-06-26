@@ -47,7 +47,7 @@ resource "kubernetes_service" "test_app" {
     port {
       name        = "http"  # ВАЖНО! Для ServiceMonitor
       port        = 80
-      target_port = 80
+      target_port = 9100
       protocol    = "TCP"
     }
     type = "ClusterIP"
