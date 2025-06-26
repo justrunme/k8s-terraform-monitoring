@@ -22,9 +22,9 @@ resource "kubernetes_deployment" "test_app" {
       spec {
         container {
           name  = "test-app"
-          image = "nginxdemos/hello"
+          image = "prom/node-exporter"
           port {
-            container_port = 80
+            container_port = 9100
           }
         }
       }
