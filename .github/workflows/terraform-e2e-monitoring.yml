@@ -88,6 +88,11 @@ jobs:
           echo "--- test-app Service Endpoints ---"
           kubectl get endpoints test-app -n monitoring -o yaml
 
+      - name: List all pods in monitoring namespace
+        run: |
+          echo "--- All pods in monitoring namespace ---"
+          kubectl get pods -n monitoring --show-labels
+
       - name: Get Prometheus Operator Pod Logs
         run: |
           echo "--- Prometheus Operator Pod Logs ---"
